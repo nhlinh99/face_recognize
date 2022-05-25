@@ -2,12 +2,14 @@ import cv2
 import time
 import json
 import faiss
-import torch
 import numpy as np
+import mxnet as mx
 import pyrealsense2 as rs
 from sklearn import preprocessing
+from collections import namedtuple
 
 from detection.scrfd.mmdet.apis import init_detector
+from detection.retinaface import retinaface, face_inference
 from recognition.arcface_torch.backbones import get_model
 from detection.scrfd.demo.detect import inference as detect
 from recognition.arcface_torch.recognize import inference as recognize
@@ -44,12 +46,11 @@ def load_db(db_path, use_gpu = True):
 def identification(image, model_detection, model_recognition, threshold):
     list_len_embedding, list_person_name, index_faiss = face_database
     result = []
-    detections = detect(model_detection, image)
+    scales = [480, 640]
+    crop_faces, faces, landmarks = face_inference.get_face_area(image, model_detection, threshold, scales)
     
-    for detection in detections:
-        croped_image = detection[0]
-        bounding_box = detection[1]
-        face_embedding = recognize(model_recognition, croped_image)[0]
+    for face in crop_faces:
+        face_embedding = recognize(model_recognition, face)[0]
         
         xq = face_embedding.astype('float32').reshape(1,512)
         xq = preprocessing.normalize(xq, norm='l2')
@@ -68,13 +69,21 @@ def identification(image, model_detection, model_recognition, threshold):
     return result
 
 
+classification_threshold = 0 #-0.55
+
 face_database = load_db("db.json", use_gpu=False)
 
-model_detection = init_detector("./scrfd_500m_bnkps.py", "model_detect.pth", device='cpu') 
+model_detection = retinaface.RetinaFace('./models/detection/Mobilenet/mnet.25', 0, -1, 'net3')
 
-model_recognition = get_model(name='r100', fp16=False)
-model_recognition.load_state_dict(torch.load("backbone_r100.pth", map_location="cpu"))
-model_recognition.eval()
+prefix = "./models/recognition/MFaceNet/model"
+sym, arg, aux = mx.model.load_checkpoint(prefix, 0)
+
+# define mxnet
+ctx = mx.gpu(0) # gpu_id = 0 ctx = mx.gpu(gpu_id)
+mod = mx.mod.Module(symbol=sym, context=ctx, label_names=None)
+mod.bind(for_training=False, data_shapes=[('data', (1,3,112,112))])
+mod.set_params(arg, aux)
+batch = namedtuple('Batch', ['data'])
 
 pipeline = rs.pipeline()
 
@@ -89,14 +98,14 @@ align = rs.align(align_to)
 padding = 0
 
 while True:
-    frames =pipeline.wait_for_frames(1000)
+    frames = pipeline.wait_for_frames(1000)
 
     aligned_frames = align.process(frames)
 
     color_frame = aligned_frames.get_color_frame()
     color_image = np.array(color_frame.get_data())
 
-    list_person_info = identification(color_image, model_detection, model_recognition, threshold=0.4)
+    list_person_info = identification(color_image, model_detection, model_recognition, threshold=0.85)
 
     for person_info in list_person_info:
         name = person_info[0]
