@@ -1,6 +1,8 @@
 
 # InsightFace: 2D and 3D Face Analysis Project
 
+# Model path: https://drive.google.com/drive/folders/1X0VQQv06DhaFdXGoI8cXySRNO-hBvir2?usp=sharing
+
 <div align="left">
   <img src="https://insightface.ai/assets/img/custom/logo3.jpg" width="240"/>
 </div>
