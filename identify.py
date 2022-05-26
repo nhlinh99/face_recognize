@@ -54,7 +54,7 @@ def identification(image, model_detection, model_recognition, threshold_detect, 
     crop_faces, box_info, landmarks = face_inference.get_face_area(image, model_detection, threshold_detect, scales)
     for i in range(len(crop_faces)):
         face = crop_faces[i]
-        bounding_box = list(map(int,box_info[0][0:4]))
+        bounding_box = list(map(int,box_info[i][0:4]))
         face_embeded = get_face_embeded(face, model_recognition)
         xq = face_embeded.astype('float32').reshape(1, EMBEDDING_DIMENSION)
         xq = preprocessing.normalize(xq, norm='l2')
@@ -66,18 +66,16 @@ def identification(image, model_detection, model_recognition, threshold_detect, 
             sum += list_len_embedding[idx]
             if position < sum:
                 if distances[0][0] >= threshold_recog:
-                    result.append([list_person_name[idx], bounding_box])
+                    result.append([list_person_name[idx], bounding_box, landmarks[i]])
                 else:
-                    result.append(["stranger", bounding_box])
-        
+                    result.append(["stranger", bounding_box, landmarks[i]])
+
                 break
         
     return result
 
 
-classification_threshold = 0 #-0.55
-
-face_database = load_db("db.json", use_gpu=False)
+face_database = load_db("./models/face_database.json", use_gpu=False)
 
 model_detection = retinaface.RetinaFace('./models/detection/Mobilenet/mnet.25', 0, -1, 'net3')
 
@@ -90,14 +88,12 @@ mod = mx.mod.Module(symbol=sym, context=ctx, label_names=None)
 mod.bind(for_training=False, data_shapes=[('data', (1,3,112,112))])
 mod.set_params(arg, aux)
 batch = namedtuple('Batch', ['data'])
-
 model_recognition = [mod, batch]
 
 pipeline = rs.pipeline()
 
 config = rs.config()
 config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-
 profile = pipeline.start(config)
 
 align_to = rs.stream.color
@@ -116,11 +112,12 @@ while True:
     color_frame = aligned_frames.get_color_frame()
     color_image = np.array(color_frame.get_data())
 
-    list_person_info = identification(color_image, model_detection, model_recognition, threshold_detect=0.8, threshold_recog=0.5)
-    print(len(list_person_info))
+    list_person_info = identification(color_image, model_detection, model_recognition, threshold_detect=0.8, threshold_recog=0.7)
     for person_info in list_person_info:
         name = person_info[0]
         bounding_box = person_info[1]
+        landmarks = person_info[2]
+        [cv2.circle(color_image, (point[0], point[1]), 1, (255,0,0), 2) for point in landmarks.astype(int)]
         cv2.rectangle(color_image, (bounding_box[0], bounding_box[1]), (bounding_box[2], bounding_box[3]), (255, 0, 0), 2)
         cv2.putText(color_image, name, (bounding_box[0], bounding_box[1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
 
