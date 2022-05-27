@@ -5,7 +5,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from config import IMG_DIR, pickle_file
+from MobileFaceNet.config import IMG_DIR, pickle_file
 
 # Data augmentation and normalization for training
 # Just normalization for validation

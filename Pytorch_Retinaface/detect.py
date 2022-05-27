@@ -95,7 +95,7 @@ def inference(model_detection, input_image, threshold_detect, cfg, device):
 
     tic = time.time()
     loc, conf, landms = model_detection(image)  # forward pass
-    print('net forward time: {:.4f}'.format(time.time() - tic))
+    # print('net forward time: {:.4f}'.format(time.time() - tic))
 
     priorbox = PriorBox(cfg, image_size=(im_height, im_width))
     priors = priorbox.forward()

@@ -87,11 +87,15 @@ def identification(image, model_detection, model_recognition, threshold_detect, 
     list_len_embedding, list_person_name, index_faiss = face_database
     result = []
     scales = [480, 640]
+    st = time.time()
     crop_faces, box_info, landmarks = face_inference.get_face_area(image, model_detection, threshold_detect, scales)
+    print(time.time() - st)
     for i in range(len(crop_faces)):
         face = crop_faces[i]
         bounding_box = list(map(int,box_info[i][0:4]))
+        st = time.time()
         face_embeded = get_face_embeded(face, model_recognition)
+        # print(time.time() - st)
         xq = face_embeded.astype('float32').reshape(1, EMBEDDING_DIMENSION)
         xq = preprocessing.normalize(xq, norm='l2')
         distances, indices = index_faiss.search(xq, 1)
