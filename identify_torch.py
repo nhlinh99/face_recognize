@@ -1,24 +1,22 @@
 import sys
-sys.path.append("C:/Users/linhnh/Desktop/TMT/face_recognize/detection/retinaface")
+sys.path.append("C:/Users/linhnh/Desktop/TMT/face_recognize/detection/scrfd")
 
 import cv2
 import time
 import json
+import torch
 import faiss
 # import annoy
 import numpy as np
-import mxnet as mx
 import pyrealsense2 as rs
 from sklearn import preprocessing
-from collections import namedtuple
 
-# from detection.scrfd.mmdet.apis import init_detector
-from detection.retinaface import retinaface, face_inference
-# from recognition.arcface_torch.backbones import get_model
-# from recognition.arcface_torch.recognize import inference as recognize
-from recognition.arcface_mxnet.inference_face_embedding import get_face_embeded
+from detection.scrfd.mmdet.apis import init_detector
+from recognition.arcface_torch.backbones import get_model
+from detection.scrfd.demo.detect import inference as detect
+from recognition.arcface_torch.recognize import inference as recognize
 
-EMBEDDING_DIMENSION = 128
+EMBEDDING_DIMENSION = 512
 
 def load_db(db_path, use_gpu = False):
     with open(db_path, 'r') as f:
@@ -47,51 +45,15 @@ def load_db(db_path, use_gpu = False):
     
     return list_len, list_id, index
 
-# def load_db(db_path):
-#     with open(db_path, 'r') as f:
-#         db = json.load(f)
-        
-#     annoy_index = annoy.AnnoyIndex(EMBEDDING_DIMENSION, 'angular')
-
-#     dict_person_id = {}
-#     count = 0
-#     for person_id, embeddings in db.items():
-#         for embedding in embeddings[0]:
-#             dict_person_id[count] = person_id
-#             annoy_index.add_item(count, embedding)
-#             count += 1
-
-#     annoy_index.build(30)
-#     return dict_person_id, annoy_index
-
-
-# def identification(image, model_detection, model_recognition, threshold_detect, threshold_recog):
-#     dict_person_id, index = face_database
-#     result = []
-#     scales = [480, 640]
-#     crop_faces, box_info, landmarks = face_inference.get_face_area(image, model_detection, threshold_detect, scales)
-#     for i in range(len(crop_faces)):
-#         face = crop_faces[i]
-#         bounding_box = list(map(int,box_info[i][0:4]))
-#         face_embeded = get_face_embeded(face, model_recognition).astype('float32')
- 
-#         idx_result = index.get_nns_by_vector(face_embeded, 1, include_distances=True)
-        
-#         best_idx = idx_result[0][0]
-#         distance = idx_result[1][0]
-#         result.append([dict_person_id[best_idx], bounding_box, landmarks[i], distance])
-        
-#     return result
 
 def identification(image, model_detection, model_recognition, threshold_detect, threshold_recog):
     list_len_embedding, list_person_name, index_faiss = face_database
     result = []
-    scales = [480, 640]
-    crop_faces, box_info, landmarks = face_inference.get_face_area(image, model_detection, threshold_detect, scales)
-    for i in range(len(crop_faces)):
-        face = crop_faces[i]
-        bounding_box = list(map(int,box_info[i][0:4]))
-        face_embeded = get_face_embeded(face, model_recognition)
+    face_info = detect(model_detection, image, threshold_detect)
+    for i in range(len(face_info)):
+        face = face_info[i][0]
+        bounding_box = face_info[i][1]
+        face_embeded = recognize(model_recognition, face)[0]
         xq = face_embeded.astype('float32').reshape(1, EMBEDDING_DIMENSION)
         xq = preprocessing.normalize(xq, norm='l2')
         distances, indices = index_faiss.search(xq, 1)
@@ -102,27 +64,21 @@ def identification(image, model_detection, model_recognition, threshold_detect, 
             sum += list_len_embedding[idx]
             if position < sum:
                 if distances[0][0] >= threshold_recog:
-                    result.append([list_person_name[idx], bounding_box, landmarks[i], distances[0][0]])
+                    result.append([list_person_name[idx], bounding_box, distances[0][0]])
                 else:
-                    result.append(["stranger", bounding_box, landmarks[i], distances[0][0]])
+                    result.append(["stranger", bounding_box, distances[0][0]])
                 break
     return result
 
 
-face_database = load_db("./models/face_database.json")
+face_database = load_db("./models/face_database_torch.json")
 
-model_detection = retinaface.RetinaFace('./models/detection/Mobilenet/mnet.25', 0, -1, 'net3')
-
-prefix = "./models/recognition/MFaceNet/model"
-sym, arg, aux = mx.model.load_checkpoint(prefix, 0)
+model_detection = init_detector("scrfd_500m_bnkps.py", "models/detection/model_detect.pth", device='cpu') # cuda:0 
 
 # define mxnet
-ctx = mx.cpu() # gpu_id = 0 ctx = mx.gpu(gpu_id)
-mod = mx.mod.Module(symbol=sym, context=ctx, label_names=None)
-mod.bind(for_training=False, data_shapes=[('data', (1,3,112,112))])
-mod.set_params(arg, aux)
-batch = namedtuple('Batch', ['data'])
-model_recognition = [mod, batch]
+model_recognition = get_model(name='r34', fp16=False)
+model_recognition.load_state_dict(torch.load("models/recognition/backbone_r34.pth", map_location="cpu"))
+model_recognition.eval()
 
 pipeline = rs.pipeline()
 
@@ -146,13 +102,11 @@ while True:
     color_frame = aligned_frames.get_color_frame()
     color_image = np.array(color_frame.get_data())
 
-    list_person_info = identification(color_image, model_detection, model_recognition, threshold_detect=0.8, threshold_recog=0.7)
+    list_person_info = identification(color_image, model_detection, model_recognition, threshold_detect=0.5, threshold_recog=0.7)
     for person_info in list_person_info:
         name = person_info[0]
         bounding_box = person_info[1]
-        landmarks = person_info[2]
-        distance = round(person_info[3], 2)
-        [cv2.circle(color_image, (point[0], point[1]), 1, (255,0,0), 2) for point in landmarks.astype(int)]
+        distance = round(person_info[2], 2)
         cv2.rectangle(color_image, (bounding_box[0], bounding_box[1]), (bounding_box[2], bounding_box[3]), (255, 0, 0), 2)
         cv2.putText(color_image, "{} {}".format(name, str(distance)), (bounding_box[0], bounding_box[1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
 
@@ -176,14 +130,12 @@ while True:
         cv2.destroyAllWindows()
         break
 
-# color_image = cv2.imread("test_2.png")
-# list_person_info = identification(color_image, model_detection, model_recognition, threshold_detect=0.8, threshold_recog=0.7)
+# color_image = cv2.imread("test.png")
+# list_person_info = identification(color_image, model_detection, model_recognition, threshold_detect=0.5, threshold_recog=0.7)
 # for person_info in list_person_info:
 #     name = person_info[0]
 #     bounding_box = person_info[1]
-#     landmarks = person_info[2]
-#     distance = round(person_info[3], 2)
-#     [cv2.circle(color_image, (point[0], point[1]), 1, (255,0,0), 2) for point in landmarks.astype(int)]
+#     distance = round(person_info[2], 2)
 #     cv2.rectangle(color_image, (bounding_box[0], bounding_box[1]), (bounding_box[2], bounding_box[3]), (255, 0, 0), 2)
 #     cv2.putText(color_image, "{} {}".format(name, str(distance)), (bounding_box[0], bounding_box[1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
 

@@ -7,13 +7,13 @@ import numpy as np
 # score_thr = 0.5
 # model = init_detector(config, checkpoint, device)
 
-def inference(model, image):
+def inference(model, image, threshold=0.4):
     detections = []
     with torch.no_grad():
         result = inference_detector(model, image)
         for i in range(len(result[0])):
             bbox_temp =  torch.tensor(result[0][i]).view(1,5).tolist()[0]
-            if bbox_temp[4] > 0.5:
+            if bbox_temp[4] > threshold:
                 bounding_box = np.array(bbox_temp[0:4]).astype(int).tolist()
                 detections.append([image[bounding_box[1]: bounding_box[3], bounding_box[0]: bounding_box[2]],
                                     bounding_box])
