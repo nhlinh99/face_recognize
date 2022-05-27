@@ -124,67 +124,70 @@ model_recognition = get_model(name='r34', fp16=False)
 model_recognition.load_state_dict(torch.load("models/recognition/backbone_r34.pth", map_location="cpu"))
 model_recognition.eval()
 
-pipeline = rs.pipeline()
+print(model_detection)
+print(model_recognition)
 
-config = rs.config()
-config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-profile = pipeline.start(config)
+# pipeline = rs.pipeline()
 
-align_to = rs.stream.color
-align = rs.align(align_to)
+# config = rs.config()
+# config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+# profile = pipeline.start(config)
 
-padding = 0
+# align_to = rs.stream.color
+# align = rs.align(align_to)
 
-prev_frame_time = 0
-new_frame_time = 0
+# padding = 0
 
-while True:
-    frames = pipeline.wait_for_frames(1000)
+# prev_frame_time = 0
+# new_frame_time = 0
 
-    aligned_frames = align.process(frames)
+# while True:
+#     frames = pipeline.wait_for_frames(1000)
 
-    color_frame = aligned_frames.get_color_frame()
-    color_image = np.array(color_frame.get_data())
+#     aligned_frames = align.process(frames)
 
-    list_person_info = identification(color_image, model_detection, model_recognition, threshold_detect=0.5, threshold_recog=0.7)
-    for person_info in list_person_info:
-        name = person_info[0]
-        bounding_box = person_info[1]
-        landmarks = person_info[2]
-        distance = round(person_info[3], 2)
-        [cv2.circle(color_image, (point[0], point[1]), 1, (255,0,0), 2) for point in landmarks]
-        cv2.rectangle(color_image, (bounding_box[0], bounding_box[1]), (bounding_box[2], bounding_box[3]), (255, 0, 0), 2)
-        cv2.putText(color_image, "{} {}".format(name, str(distance)), (bounding_box[0], bounding_box[1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+#     color_frame = aligned_frames.get_color_frame()
+#     color_image = np.array(color_frame.get_data())
 
-    new_frame_time = time.time()
+#     list_person_info = identification(color_image, model_detection, model_recognition, threshold_detect=0.5, threshold_recog=0.7)
+#     for person_info in list_person_info:
+#         name = person_info[0]
+#         bounding_box = person_info[1]
+#         landmarks = person_info[2]
+#         distance = round(person_info[3], 2)
+#         [cv2.circle(color_image, (point[0], point[1]), 1, (255,0,0), 2) for point in landmarks]
+#         cv2.rectangle(color_image, (bounding_box[0], bounding_box[1]), (bounding_box[2], bounding_box[3]), (255, 0, 0), 2)
+#         cv2.putText(color_image, "{} {}".format(name, str(distance)), (bounding_box[0], bounding_box[1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
 
-    fps = 1/(new_frame_time-prev_frame_time)
-    prev_frame_time = new_frame_time
+#     new_frame_time = time.time()
 
-    # converting the fps into integer
-    fps = int(fps)
-    fps = "FPS: " + str(fps)
+#     fps = 1/(new_frame_time-prev_frame_time)
+#     prev_frame_time = new_frame_time
 
-    # putting the FPS count on the frame
-    cv2.putText(color_image, fps, (7, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 2, cv2.LINE_AA)
+#     # converting the fps into integer
+#     fps = int(fps)
+#     fps = "FPS: " + str(fps)
 
-    cv2.namedWindow("Align Example", cv2.WINDOW_AUTOSIZE)
-    cv2.imshow("Align Example", color_image)
+#     # putting the FPS count on the frame
+#     cv2.putText(color_image, fps, (7, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 2, cv2.LINE_AA)
 
-    key = cv2.waitKey(1)
-    if key & 0xFF == ord('q') or key ==27:
-        cv2.destroyAllWindows()
-        break
+#     cv2.namedWindow("Align Example", cv2.WINDOW_AUTOSIZE)
+#     cv2.imshow("Align Example", color_image)
 
-# color_image = cv2.imread("test.png")
-# list_person_info = identification(color_image, model_detection, model_recognition, threshold_detect=0.5, threshold_recog=0.7)
-# for person_info in list_person_info:
-#     name = person_info[0]
-#     bounding_box = person_info[1]
-#     landmarks = person_info[2]
-#     distance = round(person_info[3], 2)
-#     [cv2.circle(color_image, (point[0], point[1]), 1, (255,0,0), 2) for point in landmarks]
-#     cv2.rectangle(color_image, (bounding_box[0], bounding_box[1]), (bounding_box[2], bounding_box[3]), (255, 0, 0), 2)
-#     cv2.putText(color_image, "{} {}".format(name, str(distance)), (bounding_box[0], bounding_box[1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+#     key = cv2.waitKey(1)
+#     if key & 0xFF == ord('q') or key ==27:
+#         cv2.destroyAllWindows()
+#         break
 
-# cv2.imwrite("res.jpg", color_image)
+color_image = cv2.imread("test.png")
+list_person_info = identification(color_image, model_detection, model_recognition, threshold_detect=0.5, threshold_recog=0.7)
+for person_info in list_person_info:
+    name = person_info[0]
+    bounding_box = person_info[1]
+    landmarks = person_info[2]
+    distance = round(person_info[3], 2)
+    [cv2.circle(color_image, (point[0], point[1]), 1, (255,0,0), 2) for point in landmarks]
+    cv2.rectangle(color_image, (bounding_box[0], bounding_box[1]), (bounding_box[2], bounding_box[3]), (255, 0, 0), 2)
+    cv2.putText(color_image, "{} {}".format(name, str(distance)), (bounding_box[0], bounding_box[1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+
+cv2.imwrite("res.jpg", color_image)
